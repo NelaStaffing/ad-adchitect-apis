@@ -52,6 +52,8 @@ async def generate_mask(request: MaskRequest):
         headers["X-Message"] = "; ".join(messages)
     else:
         headers["X-Adjusted"] = "false"
+    # Ensure clients save with .png extension
+    headers["Content-Disposition"] = "inline; filename=mask.png"
 
     return StreamingResponse(img_byte_arr, media_type="image/png", headers=headers)
 
