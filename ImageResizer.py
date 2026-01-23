@@ -97,6 +97,96 @@ async def resize_image(
     return StreamingResponse(img_byte_arr, media_type=media_type, headers=headers)
 
 
+@router.post("/centered-size")
+async def resize_centered_size(
+    file: UploadFile = File(..., description="Image file to process"),
+    inner_width: int = Form(..., gt=0, description="Inner box width to fit the image into (maintain aspect ratio)"),
+    inner_height: int = Form(..., gt=0, description="Inner box height to fit the image into (maintain aspect ratio)"),
+    canvas_width: int = Form(..., gt=0, description="Final canvas width"),
+    canvas_height: int = Form(..., gt=0, description="Final canvas height"),
+    background_color: str = Form("white", description="Background color for padding")
+):
+    """
+    Resize the image to fit within the inner box (inner_width x inner_height)
+    preserving aspect ratio, then center it on a canvas of
+    (canvas_width x canvas_height) with equal padding on all sides.
+    If canvas is smaller than the resized image, the canvas is clamped up.
+    """
+    image_data = await file.read()
+    img = Image.open(io.BytesIO(image_data))
+
+    original_format = img.format or "PNG"
+    has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+
+    orig_width, orig_height = img.size
+    scale = min(inner_width / orig_width, inner_height / orig_height)
+    new_width = max(1, int(round(orig_width * scale)))
+    new_height = max(1, int(round(orig_height * scale)))
+
+    resized_img = img.resize((new_width, new_height), Image.LANCZOS)
+
+    adjusted = False
+    out_width = max(canvas_width, new_width)
+    out_height = max(canvas_height, new_height)
+    if out_width != canvas_width or out_height != canvas_height:
+        adjusted = True
+
+    mode = "RGBA" if has_alpha else "RGB"
+    canvas = Image.new(mode, (out_width, out_height), background_color)
+
+    left = (out_width - new_width) // 2
+    top = (out_height - new_height) // 2
+
+    if has_alpha:
+        canvas.paste(resized_img, (left, top), resized_img)
+    else:
+        if resized_img.mode != canvas.mode:
+            resized_img = resized_img.convert(canvas.mode)
+        canvas.paste(resized_img, (left, top))
+
+    img_byte_arr = io.BytesIO()
+    output_format = "PNG" if has_alpha else (original_format if original_format in ["JPEG", "PNG", "WEBP"] else "PNG")
+
+    save_kwargs = {"format": output_format}
+    if output_format == "JPEG":
+        save_kwargs["quality"] = 95
+    elif output_format == "WEBP":
+        save_kwargs["quality"] = 95
+    elif output_format == "PNG":
+        save_kwargs["optimize"] = True
+
+    canvas.save(img_byte_arr, **save_kwargs)
+    img_byte_arr.seek(0)
+
+    media_types = {
+        "PNG": "image/png",
+        "JPEG": "image/jpeg",
+        "WEBP": "image/webp"
+    }
+    media_type = media_types.get(output_format, "image/png")
+
+    pad_left = left
+    pad_right = out_width - new_width - left
+    pad_top = top
+    pad_bottom = out_height - new_height - top
+
+    ext = output_format.lower()
+    headers = {
+        "Content-Disposition": f"inline; filename=resized_centered_box.{ext}",
+        "X-Original-Size": f"{orig_width}x{orig_height}",
+        "X-Inner-Box": f"{inner_width}x{inner_height}",
+        "X-Resized-Size": f"{new_width}x{new_height}",
+        "X-Canvas-Size": f"{out_width}x{out_height}",
+        "X-Padding-Left": str(pad_left),
+        "X-Padding-Right": str(pad_right),
+        "X-Padding-Top": str(pad_top),
+        "X-Padding-Bottom": str(pad_bottom),
+        "X-Adjusted-Canvas": str(adjusted).lower()
+    }
+
+    return StreamingResponse(img_byte_arr, media_type=media_type, headers=headers)
+
+
 @router.post("/centered-width")
 async def resize_centered_width(
     file: UploadFile = File(..., description="Image file to process"),
