@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from PIL import Image
 import io
+
+router = APIRouter(prefix="/mask", tags=["Mask Generator"])
 
 app = FastAPI(title="MaskGenerator API")
 
@@ -12,11 +14,11 @@ class MaskRequest(BaseModel):
     mask_width: int = Field(..., gt=0, description="Width of the inner mask (black)")
     mask_height: int = Field(..., gt=0, description="Height of the inner mask (black)")
 
-@app.get("/")
-async def root():
+@router.get("/")
+async def mask_root():
     return {"message": "MaskGenerator API is running", "docs": "/docs"}
 
-@app.post("/generate-mask")
+@router.post("/generate-mask")
 async def generate_mask(request: MaskRequest):
     adjusted = False
     messages = []
@@ -56,6 +58,8 @@ async def generate_mask(request: MaskRequest):
     headers["Content-Disposition"] = "inline; filename=mask.png"
 
     return StreamingResponse(img_byte_arr, media_type="image/png", headers=headers)
+
+app.include_router(router)
 
 if __name__ == "__main__":
     import uvicorn

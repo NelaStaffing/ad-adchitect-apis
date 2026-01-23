@@ -3,9 +3,11 @@ from fastapi.responses import RedirectResponse
 
 app = FastAPI(title="Adchitect APIs")
 
-# Mount sub-applications (APIs)
-from MaskGenerator import app as mask_app
-app.mount("/mask", mask_app)
+# Include routers from sub-modules
+from MaskGenerator import router as mask_router
+from ImageResizer import router as resizer_router
+app.include_router(mask_router)
+app.include_router(resizer_router)
 
 @app.get("/")
 async def root():
@@ -16,6 +18,10 @@ async def root():
             "mask_generator": {
                 "base_url": "/mask",
                 "docs": "/mask/docs"
+            },
+            "image_resizer": {
+                "base_url": "/resize",
+                "docs": "/resize/docs"
             }
         }
     }
@@ -24,6 +30,7 @@ async def root():
 async def choose(service: str = "mask"):
     targets = {
         "mask": "/mask",
+        "resize": "/resize",
     }
     target = targets.get(service)
     if not target:
